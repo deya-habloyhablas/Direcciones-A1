@@ -17,7 +17,7 @@
       }
     </style>
     
-    <!-- Import Map to tell the browser where to find libraries -->
+    <!-- Import Map corrected: Only React 18 -->
     <script type="importmap">
 {
   "imports": {
@@ -30,11 +30,15 @@
 }
 </script>
 
-    <!-- Shim for process.env to prevent ReferenceError in browser -->
+    <!-- Shim for process.env -->
     <script>
       window.process = {
         env: {
-          API_KEY: '' // You must manually set this in the console or via a local override for the demo to work
+          // -----------------------------------------------------------
+          // INSTRUCCIONES PARA EL PROFESOR:
+          // Pega tu API Key de Google Gemini aquí abajo, entre las comillas.
+          // -----------------------------------------------------------
+          API_KEY: '' 
         }
       };
     </script>
@@ -42,7 +46,430 @@
   <body>
     <div id="root"></div>
     
-    <!-- Load the main entry point with Babel processing -->
-    <script type="text/babel" data-type="module" src="./index.tsx"></script>
+    <!-- SINGLE FILE APP LOGIC -->
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect } from 'react';
+      import ReactDOM from 'react-dom/client';
+      import { GoogleGenAI, Type } from "@google/genai";
+
+      // ---------------------------------------------------------
+      // 1. CONSTANTS & DATA
+      // ---------------------------------------------------------
+      
+      const PlaceType = {
+        PARK: 'parque',
+        SCHOOL: 'escuela',
+        CINEMA: 'cine',
+        BANK: 'banco',
+        RESTAURANT: 'restaurante',
+        HOSPITAL: 'hospital',
+        MUSEUM: 'museo',
+        SUPERMARKET: 'supermercado',
+        PHARMACY: 'farmacia',
+        HOTEL: 'hotel',
+        GYM: 'gimnasio',
+        SQUARE: 'plaza',
+        STREET: 'calle',
+        INTERSECTION: 'cruce',
+        METRO: 'metro',
+        BUS_STOP: 'parada de autobús',
+        ATM: 'cajero'
+      };
+
+      const MAP_LOCATIONS = [
+        { id: 'hotel', name: 'El Hotel', type: PlaceType.HOTEL, icon: '🏨', color: 'bg-indigo-100 border-indigo-400' },
+        { id: 'bank', name: 'Banco / Cajero', type: PlaceType.BANK, icon: '🏧', color: 'bg-gray-100 border-gray-400' },
+        { id: 'park', name: 'El Parque', type: PlaceType.PARK, icon: '🌳', color: 'bg-green-100 border-green-400' },
+        { id: 'metro', name: 'Estación de Metro', type: PlaceType.METRO, icon: '🚇', color: 'bg-red-50 border-red-400' },
+        { id: 'museum', name: 'El Museo', type: PlaceType.MUSEUM, icon: '🏛️', color: 'bg-purple-100 border-purple-400' },
+        { id: 'pharmacy', name: 'La Farmacia', type: PlaceType.PHARMACY, icon: '💊', color: 'bg-teal-100 border-teal-400' },
+        { id: 'supermarket', name: 'Supermercado', type: PlaceType.SUPERMARKET, icon: '🛒', color: 'bg-blue-100 border-blue-400' },
+        { id: 'plaza', name: 'La Plaza', type: PlaceType.SQUARE, icon: '⛲', color: 'bg-yellow-50 border-yellow-300' },
+        { id: 'bus', name: 'Parada Autobús', type: PlaceType.BUS_STOP, icon: '🚏', color: 'bg-yellow-100 border-yellow-400' },
+        { id: 'cinema', name: 'El Cine', type: PlaceType.CINEMA, icon: '🎬', color: 'bg-red-100 border-red-400' },
+        { id: 'restaurant', name: 'El Restaurante', type: PlaceType.RESTAURANT, icon: '🍝', color: 'bg-orange-100 border-orange-400' },
+      ];
+
+      const CHALLENGES = [
+        { 
+          id: 1, 
+          type: 'existence', 
+          prompt: 'Pregunta si hay un cajero automático (ATM) en el barrio.', 
+          hint: 'Usa: "¿Hay un...?"'
+        },
+        { 
+          id: 2, 
+          type: 'location', 
+          prompt: 'Pregunta dónde está la estación de Metro.', 
+          hint: 'Usa: "¿Dónde está...?"'
+        },
+        { 
+          id: 3, 
+          type: 'directions', 
+          prompt: 'Estás en el Hotel. Explica cómo ir al Supermercado.',
+          hint: 'Usa: "Cruzas...", "Sigues...", "Giras..."'
+        },
+        { 
+          id: 4, 
+          type: 'existence', 
+          prompt: 'Mira el mapa. Pregunta si hay un Gimnasio.',
+          hint: 'Usa: "¿Hay...?"'
+        },
+        {
+          id: 5,
+          type: 'directions',
+          prompt: '¿Cómo vas de la Parada de Autobús al Museo?',
+          hint: 'Recuerda: Norte es arriba, Este es derecha.'
+        },
+        { 
+          id: 6, 
+          type: 'location', 
+          prompt: 'Describe dónde está el Cine usando referencias visuales.',
+          hint: 'Usa: "en la esquina", "al lado de", "cerca de la plaza"'
+        }
+      ];
+
+      const MAP_CONTEXT_DESCRIPTION = `
+      This is a large city map layout.
+
+      VISUAL VOCABULARY (ICONS & PLACES):
+      - Hotel (🏨): Top Left.
+      - Bank/ATM (🏧): Top Left, next to Hotel.
+      - Park (🌳): Top Middle, large green area.
+      - Metro (🚇): Top Right corner.
+      - Museum (🏛️): Top Right, next to Metro.
+      - Pharmacy (💊): Bottom Left corner.
+      - Supermarket (🛒): Bottom Left, below Pharmacy.
+      - Plaza (⛲): Bottom Middle, with a fountain.
+      - Bus Stop (🚏): Bottom Middle, below Plaza.
+      - Cinema (🎬): Bottom Right corner.
+      - Restaurant (🍝): Bottom Right, below Cinema.
+
+      STREETS:
+      - "Calle Mayor": Horizontal, middle.
+      - "Avenida Libertad": Vertical, left.
+      - "Avenida de la Paz": Vertical, right.
+      `;
+
+      // ---------------------------------------------------------
+      // 2. GEMINI SERVICE
+      // ---------------------------------------------------------
+
+      const getClient = () => {
+          const apiKey = process.env.API_KEY || (window.process?.env?.API_KEY);
+          if (!apiKey) {
+              console.error("CRITICAL: process.env.API_KEY is missing.");
+              throw new Error("API Key not found in environment variables.");
+          }
+          return new GoogleGenAI({ apiKey });
+      };
+
+      const checkStudentResponse = async (studentInput, challengePrompt, challengeType) => {
+          try {
+              const ai = getClient();
+              
+              const systemInstruction = `
+              You are a friendly Spanish teacher. 
+              
+              CONTEXT:
+              ${MAP_CONTEXT_DESCRIPTION}
+
+              TASK: The student is doing Challenge: "${challengePrompt}" (Type: ${challengeType}).
+              
+              RULES:
+              1. **Grammar**: Accept Present Indicative ("Cruzas") or "Tienes que" + Infinitive. Reject Imperative ("Cruza").
+              2. **Vocabulary**: Check if they refer to the correct places based on the icons/map.
+              3. **Existence**: If they ask "Hay un gimnasio?", answer based on the map (No hay).
+              
+              OUTPUT: JSON with 'isCorrect' (boolean), 'feedback' (Spanish string), 'correction' (Spanish string).
+              `;
+
+              const response = await ai.models.generateContent({
+                  model: "gemini-3-flash-preview",
+                  contents: studentInput,
+                  config: {
+                      systemInstruction: systemInstruction,
+                      responseMimeType: "application/json",
+                      responseSchema: {
+                          type: Type.OBJECT,
+                          properties: {
+                              isCorrect: { type: Type.BOOLEAN },
+                              feedback: { type: Type.STRING },
+                              correction: { type: Type.STRING }
+                          },
+                          required: ["isCorrect", "feedback"]
+                      }
+                  }
+              });
+
+              const text = response.text;
+              if (!text) throw new Error("No response");
+              
+              let cleanText = text.trim();
+              if (cleanText.startsWith("```")) {
+                  cleanText = cleanText.replace(/^```(json)?\s*/, "").replace(/\s*```$/, "");
+              }
+
+              return JSON.parse(cleanText);
+
+          } catch (error) {
+              console.error("Gemini API Error:", error);
+              return {
+                  isCorrect: false,
+                  feedback: "Error técnico. Asegúrate de haber puesto la API KEY en el archivo index.html.",
+                  correction: ""
+              };
+          }
+      };
+
+      // ---------------------------------------------------------
+      // 3. COMPONENTS
+      // ---------------------------------------------------------
+
+      const renderLocation = (id) => {
+        const loc = MAP_LOCATIONS.find(l => l.id === id);
+        if (!loc) return null;
+        const isPark = id === 'park';
+        let className = `${loc.color} rounded flex flex-col items-center justify-center text-center shadow-sm transition-transform hover:scale-105 z-10 cursor-pointer `;
+        if (isPark) className += "w-full h-full";
+        else className += "flex-1 w-full"; 
+
+        return (
+          <div key={loc.id} className={className} title={loc.name}>
+            <span className="text-xl sm:text-2xl">{loc.icon}</span>
+            <span className="text-[9px] font-bold leading-tight text-gray-700 bg-white/70 px-1 rounded mt-0.5">
+              {loc.name}
+            </span>
+          </div>
+        );
+      };
+
+      const MapGrid = () => {
+        return (
+          <div className="w-full max-w-2xl mx-auto aspect-[4/3] bg-[#e8e8e8] p-4 rounded-xl shadow-lg border-4 border-gray-400 relative overflow-hidden">
+            <div className="grid grid-cols-8 grid-rows-5 h-full w-full gap-0 bg-gray-300">
+              {/* NW */}
+              <div className="col-span-2 row-span-2 bg-white m-1 rounded-lg border-b-4 border-gray-200 p-1 flex flex-col gap-1 relative">
+                  <div className="absolute top-0 left-1 text-[8px] text-gray-400 font-bold">Barrio Norte</div>
+                  {renderLocation('hotel')}
+                  {renderLocation('bank')}
+              </div>
+              {/* Av Libertad */}
+              <div className="col-span-1 row-span-2 flex justify-center items-center relative">
+                 <div className="h-full w-0 border-l-2 border-dashed border-white opacity-50"></div>
+                 <span className="absolute text-[8px] font-bold text-gray-500 -rotate-90 whitespace-nowrap">Avda. Libertad</span>
+              </div>
+              {/* Park */}
+              <div className="col-span-2 row-span-2 bg-green-50 m-1 rounded-lg border-b-4 border-green-200 p-1 relative">
+                  {renderLocation('park')}
+              </div>
+              {/* Av Paz */}
+              <div className="col-span-1 row-span-2 flex justify-center items-center relative">
+                 <div className="h-full w-0 border-l-2 border-dashed border-white opacity-50"></div>
+                 <span className="absolute text-[8px] font-bold text-gray-500 -rotate-90 whitespace-nowrap">Avda. de la Paz</span>
+              </div>
+              {/* NE */}
+              <div className="col-span-2 row-span-2 bg-white m-1 rounded-lg border-b-4 border-gray-200 p-1 flex flex-col gap-1">
+                  {renderLocation('metro')}
+                  {renderLocation('museum')}
+              </div>
+              {/* Calle Mayor */}
+              <div className="col-span-8 row-span-1 flex items-center justify-center relative bg-[#dcdcdc]">
+                  <div className="w-full h-0 border-t-2 border-dashed border-white opacity-50 absolute"></div>
+                  <span className="absolute left-4 text-[10px] font-bold text-gray-500 bg-[#dcdcdc] px-1">Calle Mayor</span>
+              </div>
+              {/* SW */}
+              <div className="col-span-2 row-span-2 bg-white m-1 rounded-lg border-b-4 border-gray-200 p-1 flex flex-col gap-1">
+                   {renderLocation('pharmacy')}
+                   {renderLocation('supermarket')}
+              </div>
+              {/* Vert */}
+              <div className="col-span-1 row-span-2 flex justify-center items-center relative"><div className="h-full w-0 border-l-2 border-dashed border-white opacity-50"></div></div>
+              {/* S Mid */}
+              <div className="col-span-2 row-span-2 bg-white m-1 rounded-lg border-b-4 border-gray-200 p-1 flex flex-col gap-1">
+                   {renderLocation('plaza')}
+                   {renderLocation('bus')}
+              </div>
+              {/* Vert */}
+              <div className="col-span-1 row-span-2 flex justify-center items-center relative"><div className="h-full w-0 border-l-2 border-dashed border-white opacity-50"></div></div>
+              {/* SE */}
+              <div className="col-span-2 row-span-2 bg-white m-1 rounded-lg border-b-4 border-gray-200 p-1 flex flex-col gap-1">
+                   {renderLocation('cinema')}
+                   {renderLocation('restaurant')}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const Assistant = ({ challenge, onNext }) => {
+        const [input, setInput] = useState('');
+        const [isLoading, setIsLoading] = useState(false);
+        const [response, setResponse] = useState(null);
+
+        useEffect(() => {
+          setInput('');
+          setResponse(null);
+        }, [challenge]);
+
+        const handleSubmit = async (e) => {
+          e.preventDefault();
+          if (!input.trim()) return;
+          setIsLoading(true);
+          const result = await checkStudentResponse(input, challenge.prompt, challenge.type);
+          setResponse(result);
+          setIsLoading(false);
+        };
+
+        return (
+          <div className="flex flex-col h-full bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+            <div className="bg-orange-50 p-6 border-b border-orange-100">
+              <div className="flex justify-between items-center mb-2">
+                <h2 className="text-sm font-bold text-orange-600 uppercase tracking-wider">
+                  Challenge {challenge.id}
+                </h2>
+                <span className="text-xs bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full">{challenge.type}</span>
+              </div>
+              <p className="text-xl text-gray-800 font-medium">
+                {challenge.prompt}
+              </p>
+              {challenge.hint && (
+                <p className="text-sm text-gray-500 mt-2 italic">💡 Pista: {challenge.hint}</p>
+              )}
+            </div>
+
+            <div className="flex-1 p-6 overflow-y-auto min-h-[160px]">
+              {!response && !isLoading && (
+                <div className="text-gray-400 italic text-center mt-8">
+                  Escribe tu respuesta en español.
+                </div>
+              )}
+              {isLoading && (
+                <div className="flex items-center justify-center h-full space-x-2">
+                  <div className="w-3 h-3 bg-orange-400 rounded-full animate-bounce"></div>
+                  <div className="w-3 h-3 bg-orange-400 rounded-full animate-bounce" style={{animationDelay:'0.1s'}}></div>
+                  <div className="w-3 h-3 bg-orange-400 rounded-full animate-bounce" style={{animationDelay:'0.2s'}}></div>
+                </div>
+              )}
+              {response && (
+                <div className={`rounded-lg p-4 ${response.isCorrect ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                  <div className="flex items-start mb-2">
+                    <span className={`text-2xl mr-3 ${response.isCorrect ? 'text-green-500' : 'text-red-500'}`}>
+                      {response.isCorrect ? '¡Muy bien! 🎉' : 'Casi... 🤔'}
+                    </span>
+                  </div>
+                  <p className="text-gray-700 mb-3">{response.feedback}</p>
+                  {response.correction && (
+                    <div className="bg-white/50 p-3 rounded text-sm text-gray-600">
+                      <span className="font-bold">Mejor:</span> {response.correction}
+                    </div>
+                  )}
+                  {response.isCorrect && (
+                     <button onClick={onNext} className="mt-4 w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-sm">
+                       Siguiente →
+                     </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-gray-50 border-t border-gray-200">
+              <form onSubmit={handleSubmit} className="relative">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Escribe aquí..."
+                  className="w-full pl-4 pr-12 py-3 rounded-xl border border-gray-300 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all shadow-sm"
+                  disabled={isLoading || (response?.isCorrect === true)}
+                />
+                <button
+                  type="submit"
+                  disabled={isLoading || !input.trim() || (response?.isCorrect === true)}
+                  className="absolute right-2 top-2 bottom-2 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 text-white p-2 rounded-lg transition-colors aspect-square flex items-center justify-center"
+                >
+                  ➜
+                </button>
+              </form>
+            </div>
+          </div>
+        );
+      };
+
+      const App = () => {
+        const [currentChallengeIndex, setCurrentChallengeIndex] = useState(0);
+        const currentChallenge = CHALLENGES[currentChallengeIndex];
+
+        const handleNext = () => {
+          if (currentChallengeIndex < CHALLENGES.length - 1) {
+            setCurrentChallengeIndex(prev => prev + 1);
+          } else {
+            alert("¡Felicidades! Has completado todos los ejercicios.");
+            setCurrentChallengeIndex(0);
+          }
+        };
+
+        return (
+          <div className="min-h-screen bg-[#F0F2F5] text-gray-800 pb-10">
+            <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+              <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-3xl">🏘️</span>
+                  <div>
+                    <h1 className="text-xl font-extrabold text-gray-900 tracking-tight">Mi Barrio</h1>
+                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Aprende Español</p>
+                  </div>
+                </div>
+                <div className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-bold">
+                  Nivel: A1/A2
+                </div>
+              </div>
+            </header>
+            <main className="max-w-6xl mx-auto px-4 py-8">
+              <div className="mb-8 text-center max-w-2xl mx-auto">
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">Explora la Ciudad</h2>
+                <p className="text-gray-600">
+                  Mira los iconos del mapa y responde a las preguntas.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                <div className="order-2 lg:order-1 lg:col-span-7 sticky top-24">
+                  <div className="bg-white p-2 rounded-2xl shadow-sm border border-gray-200 mb-4">
+                    <MapGrid />
+                    <div className="mt-4 px-4 pb-2">
+                      <h3 className="text-sm font-bold text-gray-700 mb-2">Vocabulario Útil:</h3>
+                      <div className="flex flex-wrap gap-2 text-xs text-gray-600">
+                        <span className="bg-gray-100 px-2 py-1 rounded border border-gray-200">Hay un/una...</span>
+                        <span className="bg-gray-100 px-2 py-1 rounded border border-gray-200">No hay...</span>
+                        <span className="bg-orange-50 px-2 py-1 rounded border border-orange-200 font-medium">¿Qué es esto?</span>
+                        <span className="bg-gray-100 px-2 py-1 rounded border border-gray-200">Al lado de...</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="order-1 lg:order-2 lg:col-span-5 h-full">
+                  <Assistant challenge={currentChallenge} onNext={handleNext} />
+                  <div className="mt-6 flex justify-center gap-2">
+                    {CHALLENGES.map((c, idx) => (
+                      <div key={c.id} className={`h-2 rounded-full transition-all duration-300 ${
+                          idx === currentChallengeIndex ? 'w-8 bg-orange-500' : 
+                          idx < currentChallengeIndex ? 'w-2 bg-green-500' : 'w-2 bg-gray-300'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </main>
+          </div>
+        );
+      };
+
+      const rootElement = document.getElementById('root');
+      if (rootElement) {
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(<App />);
+      }
+    </script>
   </body>
 </html>
