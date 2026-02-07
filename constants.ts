@@ -1,4 +1,4 @@
-import { Location, PlaceType, Challenge } from './types';
+import { Location, PlaceType, Challenge } from './types.ts';
 
 // Map Layout:
 // 3 Columns of blocks, 2 Rows of blocks.
