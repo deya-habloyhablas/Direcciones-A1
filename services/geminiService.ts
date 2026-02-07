@@ -1,10 +1,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { AIResponse } from "../types";
-import { MAP_CONTEXT_DESCRIPTION } from "../constants";
+import { AIResponse } from "../types.ts";
+import { MAP_CONTEXT_DESCRIPTION } from "../constants.ts";
 
 const getClient = () => {
     // Safety check for environment variable
-    const apiKey = process.env.API_KEY;
+    // In a static HTML deployment, process.env.API_KEY must be injected manually or via the window shim
+    const apiKey = process.env.API_KEY || (window as any).process?.env?.API_KEY;
     if (!apiKey) {
         console.error("CRITICAL: process.env.API_KEY is missing. The AI features will not work.");
         throw new Error("API Key not found in environment variables.");
