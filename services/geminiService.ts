@@ -76,7 +76,14 @@ export const checkStudentResponse = async (
         const text = response.text;
         if (!text) throw new Error("No response from AI");
         
-        return JSON.parse(text) as AIResponse;
+        // CLEAN JSON: Sometimes Gemini wraps response in ```json ... ```
+        let cleanText = text.trim();
+        if (cleanText.startsWith("```")) {
+            // Remove first line (```json) and last line (```)
+            cleanText = cleanText.replace(/^```(json)?\s*/, "").replace(/\s*```$/, "");
+        }
+
+        return JSON.parse(cleanText) as AIResponse;
 
     } catch (error) {
         console.error("Gemini API Error:", error);
