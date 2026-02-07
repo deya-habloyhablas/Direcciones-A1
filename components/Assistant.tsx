@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Challenge, AIResponse } from '../types';
-import { checkStudentResponse } from '../services/geminiService';
+import { Challenge, AIResponse } from '../types.ts';
+import { checkStudentResponse } from '../services/geminiService.ts';
 
 interface AssistantProps {
   challenge: Challenge;
