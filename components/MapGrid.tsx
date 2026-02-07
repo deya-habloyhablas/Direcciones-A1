@@ -1,5 +1,5 @@
 import React from 'react';
-import { MAP_LOCATIONS } from '../constants';
+import { MAP_LOCATIONS } from '../constants.ts';
 
 export const MapGrid: React.FC = () => {
   return (
