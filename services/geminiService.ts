@@ -3,9 +3,11 @@ import { AIResponse } from "../types";
 import { MAP_CONTEXT_DESCRIPTION } from "../constants";
 
 const getClient = () => {
+    // Safety check for environment variable
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
-        throw new Error("API Key not found");
+        console.error("CRITICAL: process.env.API_KEY is missing. The AI features will not work.");
+        throw new Error("API Key not found in environment variables.");
     }
     return new GoogleGenAI({ apiKey });
 };
@@ -79,7 +81,7 @@ export const checkStudentResponse = async (
         console.error("Gemini API Error:", error);
         return {
             isCorrect: false,
-            feedback: "Error connecting to the teacher. Please try again.",
+            feedback: "Error conectando con el profesor (Check API Key config).",
             correction: ""
         };
     }
