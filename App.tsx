@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { MapGrid } from './components/MapGrid';
-import { Assistant } from './components/Assistant';
-import { CHALLENGES } from './constants';
+import { MapGrid } from './components/MapGrid.tsx';
+import { Assistant } from './components/Assistant.tsx';
+import { CHALLENGES } from './constants.ts';
 
 const App: React.FC = () => {
   const [currentChallengeIndex, setCurrentChallengeIndex] = useState(0);
